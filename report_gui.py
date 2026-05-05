@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from datetime import datetime, timedelta
 import requests, io, pytz
+import numpy as np
 import re
 
 import ipywidgets as widgets
@@ -10,8 +11,9 @@ from ipywidgets import VBox, HBox, Button, Text, Dropdown, IntText, Output, Sele
 
 # EPICS PVs
 epics_pvs = {
-    "GMD": ("GDET:FEE1:362:ENRC", "#00008B"),        # deep blue
-    "XGMD": ("EM2K0:XGMD:HPS:milliJoulesPerPulse", "#8B0000"),  # dark red
+    "GEM": ("GDET:FEE1:362:ENRC", "#00008B"),        # deep blue
+    "GMD": ("EM1K0:GMD:HPS:milliJoulesPerPulse", "#8B0000"),  # dark red
+    "XGMD": ("EM2K0:XGMD:HPS:milliJoulesPerPulse", "#00B1B1") # light green/aqua
 }
 
 # Hutch color mapping
@@ -142,36 +144,60 @@ def report_range(end_date: str, period: str, hutch_patches=[], comment_patches=[
 
     # gmd_df = fetch_pv_data_as_df(epics_pvs["GMD"][0], start_time, end_time).iloc[::10]
     # xgmd_df = fetch_pv_data_as_df(epics_pvs["XGMD"][0], start_time, end_time).iloc[::10]
+    gem_df = fetch_pv_data_as_df(epics_pvs["GEM"][0], start_time, end_time)
     gmd_df = fetch_pv_data_as_df(epics_pvs["GMD"][0], start_time, end_time)
     xgmd_df = fetch_pv_data_as_df(epics_pvs["XGMD"][0], start_time, end_time)
     
+    if len(gem_df) > 0:
+        gem_df = gem_df.iloc[::10]
     if len(gmd_df) > 0:
         gmd_df = gmd_df.iloc[::10]
     if len(xgmd_df) > 0:
         xgmd_df = xgmd_df.iloc[::10]
 
+    # figure out autoscale
+    rolling_gem = gem_df["Value1"].rolling(60)
+    gem_max = np.max(rolling_gem.mean())
+    gem_std = np.mean(rolling_gem.std())
+
+    gem_max += gem_std*4
+    # gem_max = np.max(rolling_gem)
+
+    rolling_gmd = gmd_df["Value1"].rolling(60)
+    gmd_max = np.max(rolling_gmd.mean())
+    gmd_std = np.mean(rolling_gmd.std())
+
+    gmd_max += gmd_std*4
+    
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(15,12), sharex=False)
 
+    
+
     # GMD
-    ax1.plot(gmd_df["Timestamp"], gmd_df["Value1"], 'o', alpha=0.1, ms=1,
-             color=epics_pvs["GMD"][1], label="GMD")
+    ax1.plot(gem_df["Timestamp"], gem_df["Value1"], 'o', alpha=0.1, ms=1,
+             color=epics_pvs["GEM"][1], label="GEM")
     ax1.set_ylabel("HXR Pulse Energy(mJ)")
     ax1.set_title(f"Report {start_dt.strftime('%Y-%m-%d')} to {end_dt.strftime('%Y-%m-%d')}")
     ax1.grid(True)
-    ax1.set_ylim([-0.4, 3])
+    ax1.set_ylim([-0.4, gem_max])
     ax1.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d\n%H:%M', tz=tz))
     
     # XGMD
+    ax2.plot(gmd_df["Timestamp"], gmd_df["Value1"], 'o', alpha=0.1, ms=1,
+             color=epics_pvs["GMD"][1], label="GMD")
     ax2.plot(xgmd_df["Timestamp"], xgmd_df["Value1"], 'o', alpha=0.1, ms=1,
              color=epics_pvs["XGMD"][1], label="XGMD")
     ax2.set_xlabel("Time")
     ax2.set_ylabel("SXR Pulse Energy(mJ)")
     ax2.grid(True)
-    ax2.set_ylim([-0.4, 1.5])
+    ax2.set_ylim([-0.4, gmd_max])
     ax2.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d\n%H:%M', tz=tz))
     margin = (end_dt - start_dt) * 0.05 
     ax1.set_xlim(start_dt-margin, end_dt+margin)
     ax2.set_xlim(ax1.get_xlim())
+    legend = ax2.legend(markerscale=3)
+    for handle in legend.legend_handles:
+        handle.set_alpha(1.0)
     # fig.autofmt_xdate()
 
     patch_ymin, patch_ymax = -0.4, -0.2
