@@ -155,25 +155,31 @@ def report_range(end_date: str, period: str, hutch_patches=[], comment_patches=[
     if len(xgmd_df) > 0:
         xgmd_df = xgmd_df.iloc[::10]
 
-    # figure out autoscale
+    # figure out autoscale for HXR
     rolling_gem = gem_df["Value1"].rolling(60)
-    gem_max = np.max(rolling_gem.mean())
-    gem_std = np.mean(rolling_gem.std())
+    gem_mean = np.array(rolling_gem.mean())
+    gem_max = np.nanmax(gem_mean)
+    # get standard deviation near peak pulse energy
+    gem_std = np.nanmean(np.array(rolling_gem.std())[gem_mean>gem_max/2])
 
-    gem_max += gem_std*4
-    # gem_max = np.max(rolling_gem)
+    # add buffer to peak of rolling mean
+    gem_max += gem_std*2
 
+    # figure out autoscale for SXR
     rolling_gmd = gmd_df["Value1"].rolling(60)
-    gmd_max = np.max(rolling_gmd.mean())
-    gmd_std = np.mean(rolling_gmd.std())
-
-    gmd_max += gmd_std*4
+    gmd_mean = np.array(rolling_gmd.mean())
+    gmd_max = np.nanmax(gmd_mean)
+    gmd_std = np.array(rolling_gmd.std())[np.nanargmax(gmd_mean)]
+    # get standard deviation near peak pulse energy
+    gmd_std = np.nanmean(np.array(rolling_gmd.std())[gmd_mean>gmd_max/2])
+    
+    # add buffer to peak of rolling mean
+    gmd_max += gmd_std*2
     
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(15,12), sharex=False)
 
     
-
-    # GMD
+    # HXR
     ax1.plot(gem_df["Timestamp"], gem_df["Value1"], 'o', alpha=0.1, ms=1,
              color=epics_pvs["GEM"][1], label="GEM")
     ax1.set_ylabel("HXR Pulse Energy(mJ)")
@@ -182,7 +188,7 @@ def report_range(end_date: str, period: str, hutch_patches=[], comment_patches=[
     ax1.set_ylim([-0.4, gem_max])
     ax1.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d\n%H:%M', tz=tz))
     
-    # XGMD
+    # SXR
     ax2.plot(gmd_df["Timestamp"], gmd_df["Value1"], 'o', alpha=0.1, ms=1,
              color=epics_pvs["GMD"][1], label="GMD")
     ax2.plot(xgmd_df["Timestamp"], xgmd_df["Value1"], 'o', alpha=0.1, ms=1,
@@ -245,6 +251,7 @@ def report_range(end_date: str, period: str, hutch_patches=[], comment_patches=[
 
     plt.subplots_adjust(hspace=0.3, bottom=0.5)  
     plt.show()
+    fig.savefig(f"reports/Report {start_dt.strftime('%Y_%m_%d')} to {end_dt.strftime('%Y_%m_%d')}.png",bbox_inches='tight')
 
 # --- GUI ---
 def report_gui():
